@@ -112,7 +112,7 @@ export class Game extends Component {
                 <Button
                     title={this.state.gameRunning ? 'Стани' : 'Почни'}
                     color={this.state.gameRunning ? 'red' : 'green'}
-                    onPress={() => this.state.gameRunning ? this.startGame() : this.stopGame()} />
+                    onPress={() => this.state.gameRunning ? this.stopGame() : this.startGame()} />
                 <Text style={styles.info}></Text>
                 <Text style={styles.info}>{`Изврши операције (могу бити ${this.state.gameLevel.operations.join(', ')}) над ${this.state.gameLevel.n + 1} ${this.state.gameLevel.n + 1 > 4 ? 'бројева' : 'броја'} у низу од ${this.state.gameLevel.numRange[0]} до ${this.state.gameLevel.numRange[1]}.`}</Text>
                 <Text style={styles.target}>{this.state.currentNumber}</Text>
