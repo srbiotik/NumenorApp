@@ -21,6 +21,8 @@ export class Utils {
                 return 'podeljeno sa';
             case '*':
                 return 'puta';
+            default:
+                return '';
         }
     }
     static getLevelString(levelOffset: number) {

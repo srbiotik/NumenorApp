@@ -1,5 +1,8 @@
 import React, { Component } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Keyboard } from 'react-native';
+import { Text, TextInput, Button, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+
+import Tts, { Options } from 'react-native-tts';
+
 import { Settings } from '../settings';
 import { Utils as GameUtils } from '../utils/game';
 
@@ -15,10 +18,19 @@ type GameState = {
     scoreString: string,
     levelString: string,
     previousResult: string,
-    resultInput: string
+    resultInput: string,
+    ttsStatus: string | null,
+    selectedVoice: string | null,
+    voices: Array<any> | null,
+    ttsOptions: Options | undefined
 }
 
+Tts.addEventListener('tts-start', (event) => console.log('start', event));
+Tts.addEventListener('tts-finish', (event) => console.log('finish', event));
+Tts.addEventListener('tts-cancel', (event) => console.log('cancel', event));
 export class Game extends Component {
+
+    textInputRef: React.RefObject<TextInput> = React.createRef();
     state: GameState = {
         currentNumber: '∞',
         gameRunning: false,
@@ -31,8 +43,47 @@ export class Game extends Component {
         scoreString: '',
         levelString: '',
         previousResult: '',
-        resultInput: ''
+        resultInput: '',
+        ttsStatus: null,
+        selectedVoice: null,
+        voices: null,
+        ttsOptions: {
+            iosVoiceId: 'com.apple.ttsbundle.Lana-compact',
+            rate: 0.5,
+            androidParams: {
+                KEY_PARAM_PAN: -1,
+                KEY_PARAM_VOLUME: 0.5,
+                KEY_PARAM_STREAM: 'STREAM_MUSIC',
+            }
+        },
+
     }
+
+    initTts = async () => {
+        const voices = await Tts.voices();
+        Tts.setDefaultLanguage('hr-HR');
+        const availableVoices = voices
+            .filter((v) => !v.networkConnectionRequired && !v.notInstalled)
+            .map((v) => {
+                return { id: v.id, name: v.name, language: v.language };
+            });
+        let selectedVoice = null;
+        if (voices && voices.length > 0) {
+            selectedVoice = voices[0].id;
+            try {
+                await Tts.setDefaultLanguage(voices[0].language);
+            } catch (err) {
+                //Samsung S9 has always this error:
+                //"Language is not supported"
+                console.log(`setDefaultLanguage error `, err);
+            }
+            await Tts.setDefaultVoice(voices[0].id);
+            this.setNewState({ voices: availableVoices, selectedVoice, ttsStatus: 'initialized' });
+        } else {
+            this.setNewState({ ttsStatus: 'initialized' });
+        }
+    };
+
     setNewState = (newState: any) => {
         this.setState(() => (newState));
     };
@@ -46,6 +97,7 @@ export class Game extends Component {
             levelString: null,
             hits: 0,
         });
+        this.textInputRef.current?.focus();
         this.run();
     };
     generateNumbers = () => {
@@ -68,12 +120,14 @@ export class Game extends Component {
     run = () => {
         let counter = 0;
         const interval = setInterval(async () => {
-            this.setCurrentNumberOperation(counter);
-            if (counter == this.state.numbers.length) this.stopGame();
+            await this.setCurrentNumberOperation(counter);
+            if (counter == this.state.numbers.length) this.stopGame(true);
             if (counter >= this.state.gameLevel.n && counter < this.state.numbers.length) {
                 if (this.state.previousResult === this.state.resultInput) {
                     this.setNewState({ hits: this.state.hits + 1 });
                 }
+                this.setNewState({ resultInput: '' });
+                this.textInputRef.current?.focus();
                 const operands = this.state.numbers.slice(counter - this.state.gameLevel.n, counter + 1);
                 const operations = this.state.operations.slice(counter - this.state.gameLevel.n, counter);
                 this.setNewState({ previousResult: this.calculateResult(operands, operations).toString() });
@@ -82,15 +136,20 @@ export class Game extends Component {
         }, this.state.gameLevel.interval * 1000);
         this.setNewState({ interval });
     }
-    setCurrentNumberOperation = (counter: number) => {
+    setCurrentNumberOperation = async (counter: number) => {
         let currentNumber: string = '';
         if (counter == 0 || counter == this.state.numbers.length - 1) {
             currentNumber = `${this.state.numbers[counter]}`;
         } else {
-            // const operation = GameUtils.getOperationName(this.state.operations[counter - 1]);
-            currentNumber = `${this.state.operations[counter - 1]} ${this.state.numbers[counter]}`;
+            const operation = GameUtils.getOperationName(this.state.operations[counter - 1]);
+            await this.initTts();
+            Tts.speak(operation, this.state.ttsOptions);
+            currentNumber = `${this.state.numbers[counter]}`;
         }
         this.setNewState({ currentNumber });
+        setTimeout(() => {
+            this.setNewState({ currentNumber: '' });
+        }, 1000);
     }
     calculateResult = (operands: Array<number>, operations: Array<string>) => {
         let result = operands[0];
@@ -103,17 +162,21 @@ export class Game extends Component {
         }
         return result;
     }
-    stopGame = () => {
+    stopGame = (natural: boolean = false) => {
         if (this.state.interval) clearInterval(this.state.interval);
         let score = GameUtils.calculateScorePercentage(this.state.hits, this.state.operations.length);
         let levelOffset = GameUtils.getLevelOffset(score, Settings.passScore, Settings.failScore);
         let scoreString = `Резултат: ${this.state.hits}/${this.state.operations.length} - ${score.toFixed(2)}%`;
         let levelString = GameUtils.getLevelString(levelOffset);
-        this.setNewState({ gameRunning: false, scoreString, levelString, currentNumber: '∞' });
+        let currentLevel = this.state.currentLevel;
+        if (natural) {
+            currentLevel = this.state.currentLevel + levelOffset < 0 ? this.state.currentLevel : this.state.currentLevel + levelOffset;
+        }
+        this.setNewState({ gameRunning: false, scoreString, levelString, currentNumber: '∞', currentLevel, resultInput: '' });
     }
     render() {
         return (
-            <View style={styles.container}>
+            <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                 <Button
                     title={this.state.gameRunning ? 'Стани' : 'Почни'}
                     color={this.state.gameRunning ? 'red' : 'green'}
@@ -127,18 +190,20 @@ export class Game extends Component {
                         {`${this.state.scoreString}\n${this.state.levelString}`}
                     </Text> : null
                 }
-                <Text style={styles.target}>{this.state.currentNumber}</Text>
+                <Text style={styles.arena}>{this.state.currentNumber}</Text>
                 {
-                    this.state.gameRunning ? <TextInput
-                        style={styles.textInput}
-                        keyboardType='numeric'
-                        value={this.state.resultInput}
-                        onChangeText={(resultInput) => this.setNewState({ resultInput })}
-                        placeholder='Upisi rezultat'
-                        autoFocus={true}
-                    /> : null
+                    this.state.gameRunning ?
+                        <TextInput
+                            style={styles.textInput}
+                            keyboardType='numeric'
+                            ref={this.textInputRef}
+                            value={this.state.resultInput}
+                            onChangeText={(resultInput) => this.setNewState({ resultInput })}
+                            placeholder='Upisi rezultat'
+                            autoFocus={true}
+                        /> : null
                 }
-            </View>
+            </KeyboardAvoidingView>
         );
     }
 }
@@ -149,14 +214,15 @@ const styles = StyleSheet.create({
         backgroundColor: '#ddd',
         paddingTop: 40,
     },
-    target: {
+    arena: {
+        flex: 1,
         fontSize: 200,
         backgroundColor: '#ddd',
         marginHorizontal: 50,
         textAlign: 'center',
     },
     textInput: {
-        height: 40,
+        height: 30,
         borderColor: 'gray',
         borderWidth: 1,
         paddingLeft: 10,
