@@ -87,7 +87,7 @@ export class Game extends Component {
     setNewState = (newState: any) => {
         this.setState(() => (newState));
     };
-    startGame = () => {
+    startGame = async () => {
         this.setNewState({
             gameRunning: true,
             gameLevel: Settings.levels[this.state.currentLevel],
@@ -98,6 +98,7 @@ export class Game extends Component {
             hits: 0,
         });
         this.textInputRef.current?.focus();
+        await this.initTts()
         this.run();
     };
     generateNumbers = () => {
@@ -138,16 +139,17 @@ export class Game extends Component {
     }
     setCurrentNumberOperation = async (counter: number) => {
         let currentNumber: string = '';
-        if (counter == 0 || counter == this.state.numbers.length - 1) {
-            currentNumber = `${this.state.numbers[counter]}`;
+        if (!counter) {
+            currentNumber = this.state.numbers[counter].toString();
         } else {
             const operation = GameUtils.getOperationName(this.state.operations[counter - 1]);
-            await this.initTts();
-            Tts.speak(operation, this.state.ttsOptions);
+            console.log(counter, operation)
+            await Tts.speak(operation, this.state.ttsOptions);
             currentNumber = `${this.state.numbers[counter]}`;
         }
         this.setNewState({ currentNumber });
         setTimeout(() => {
+            if (this.state.currentNumber === '∞') return;
             this.setNewState({ currentNumber: '' });
         }, 1000);
     }
