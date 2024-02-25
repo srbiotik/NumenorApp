@@ -192,6 +192,17 @@ export class Game extends Component {
                         {`${this.state.scoreString}\n${this.state.levelString}`}
                     </Text> : null
                 }
+                {
+                    /* TODO:
+                    Instead of using text field Let's make a new component for it
+                    that will have nine fields aranged in a 3x3 grid
+                    where each field will be a circle and represent a number
+                    the result will still be entered in the text input field
+                    but the repeating numbers will be entered by clicking on the circles
+                    */
+                    // TODO: Add options page
+                    // TODO: The options are to use color and position
+                }
                 <Text style={styles.arena}>{this.state.currentNumber}</Text>
                 {
                     this.state.gameRunning ?
